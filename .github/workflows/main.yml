@@ -15,11 +15,13 @@ on:
         required: true
         type: choice
         options: [ubuntu-latest, windows-latest]
+        default: ubuntu-latest
       PythonVersion:
         description: 'Choose python version'
         required: true
         type: choice
         options: [3.8, 3.9]
+        default: "3.8"
 
 concurrency:
   group: ${{ github.workflow }} - ${{ github.ref }}
