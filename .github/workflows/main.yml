@@ -8,13 +8,30 @@ on:
   pull_request:
     branches: ["main"]
 
+  workflow_dispatch:
+    inputs:
+      artifact_choice:
+        description: 'Choose artifact to deploy'
+        required: true
+        default: 'ubuntu-latest'
+        type: choice
+        options: ['ubuntu-latest', 'ubuntu-3.9', 'windows-3.8', 'windows-latest']
+
+concurrency:
+  group: ${{ github.workflow }} - ${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   PythonVersion: 3.8
   DockerImageName: todoapp
 
 jobs:
   python-ci:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        PythonVersion: [3.8, 3.9]
+        OsType: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.OsType }}
     defaults:
       run:
         working-directory: ./src
@@ -22,10 +39,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ env.PythonVersion }}
+      - name: Setup Python ${{ matrix.PythonVersion }}
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ env.PythonVersion }}
+          python-version: ${{ matrix.PythonVersion }}
 
       - name: Install dependencies
         run: |
@@ -51,23 +68,24 @@ jobs:
           flake8 . --exit-zero --max-complexity=6
 
       - name: Upload python artifacts
+        if: github.ref_name == 'main'
         uses: actions/upload-artifact@v4
         with:
-          name: python-artifacts
+          name: python-artifacts-${{ matrix.OsType }}-${{ matrix.PythonVersion }}
           path: .
 
       - name: Upload helm artifacts
         if: github.ref_name == 'main'
         uses: actions/upload-artifact@v4
         with:
-          name: helm-artifacts
+          name: helm-artifacts-${{ matrix.OsType }}-${{ matrix.PythonVersion }}
           path: ${{ github.workspace }}/helm-charts
 
       - name: Upload kind cluster artifact
         if: github.ref_name == 'main'
         uses: actions/upload-artifact@v4
         with:
-          name: kind-cluster
+          name: kind-cluster-${{ matrix.OsType }}-${{ matrix.PythonVersion }}
           path: ${{ github.workspace }}/cluster.yml
 
   docker-ci:
@@ -108,7 +126,7 @@ jobs:
         name: helm-artifacts
         path: .
 
-    - name: Set Up Helm
+    - name: Setup Helm
       uses: azure/setup-helm@v4.2.0
 
     - name: Lint helm

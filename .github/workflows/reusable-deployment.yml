@@ -26,23 +26,23 @@ jobs:
       steps:
       - uses: actions/download-artifact@v4
         with:
-          name: helm-package
+          name: helm-package-${{ inputs.version }}
           path: .
 
       - uses: actions/download-artifact@v4
         with:
-          name: helm-artifacts
+          name: helm-artifacts-${{ inputs.version }}
           path: .
 
       - uses: actions/download-artifact@v4
         with:
-          name: kind-cluster
+          name: kind-cluster-${{ inputs.version }}
           path: .
 
-      - name: Set Up Helm
+      - name: Setup Helm
         uses: azure/setup-helm@v4.2.0
 
-      - name: Set up Kubectl
+      - name: Setup Kubectl
         uses: azure/setup-kubectl@v4
 
       - name: Create k8s Kind Cluster
