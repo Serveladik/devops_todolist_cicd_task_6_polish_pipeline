@@ -31,7 +31,7 @@ jobs:
       steps:
       - uses: actions/download-artifact@v4
         with:
-          name: helm-package-${{ github.event.inputs.artifact_choice || 'ubuntu-latest-3.8' }}
+          name: helm-package
           path: .
 
       - uses: actions/download-artifact@v4
