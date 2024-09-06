@@ -98,7 +98,7 @@ jobs:
     - uses: actions/download-artifact@v4
       name: Download python artifacts
       with:
-        name: python-artifacts
+        name: python-artifacts-${{ github.event.inputs.artifact_choice }}
         path: .
 
     - name: Login to Docker Hub
@@ -123,7 +123,7 @@ jobs:
 
     - uses: actions/download-artifact@v4
       with:
-        name: helm-artifacts
+        name: helm-artifacts-${{ github.event.inputs.artifact_choice }}
         path: .
 
     - name: Setup Helm
@@ -152,6 +152,7 @@ jobs:
     with:
       environment: development
       version: ${{ github.sha }}
+      artifact_choice: ${{ github.event.inputs.artifact_choice }}
 
   deploy-helm-stg:
     name: Deploy helm to Staging
@@ -163,3 +164,4 @@ jobs:
       version: ${{ github.sha }}
       helm-values-path: ./todoapp/values/stg.yaml
       helm-release-name: todoapp-staging
+      artifact_choice: ${{ github.event.inputs.artifact_choice }}
