@@ -13,14 +13,9 @@ on:
       artifact_choice:
         description: 'Choose artifact to deploy'
         required: true
-        default: 'ubuntu-latest'
         type: choice
-        options:
-        - ubuntu-latest
-        - ubuntu-3.9
-        - windows-3.8
-        - windows-latest
-
+        options: ['ubuntu-latest', 'ubuntu-3.9', 'windows-3.8', 'windows-latest']
+        default: 'ubuntu-latest'
 
 concurrency:
   group: ${{ github.workflow }} - ${{ github.ref }}
