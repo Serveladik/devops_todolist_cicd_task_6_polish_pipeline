@@ -10,12 +10,16 @@ on:
 
   workflow_dispatch:
     inputs:
-      artifact_choice:
-        description: 'Choose artifact to deploy'
+      OsType:
+        description: 'Choose run on'
         required: true
         type: choice
-        options: ['ubuntu-latest', 'ubuntu-3.9', 'windows-3.8', 'windows-latest']
-        default: 'ubuntu-latest'
+        options: [ubuntu-latest, windows-latest]
+      PythonVersion:
+        description: 'Choose python version'
+        required: true
+        type: choice
+        options: [3.8, 3.9]
 
 concurrency:
   group: ${{ github.workflow }} - ${{ github.ref }}
