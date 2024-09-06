@@ -17,38 +17,32 @@ on:
       helm-release-name:
         default: todoapp
         type: string
-      OsType:
-        required: true
-        type: string
-      PythonVersion:
-        required: true
-        type: string
 jobs:
     deploy-helm:
       name: ${{ inputs.environment }}
-      runs-on: ${{ inputs.OsType }}
+      runs-on: ubuntu-latest
       environment: ${{ inputs.environment }}
 
       steps:
       - uses: actions/download-artifact@v4
         with:
-          name: helm-package-${{ inputs.version }}
+          name: helm-package
           path: .
 
       - uses: actions/download-artifact@v4
         with:
-          name: helm-artifacts-${{ inputs.version }}
+          name: helm-artifacts
           path: .
 
       - uses: actions/download-artifact@v4
         with:
-          name: kind-cluster-${{ inputs.version }}
+          name: kind-cluster
           path: .
 
-      - name: Setup Helm
+      - name: Set Up Helm
         uses: azure/setup-helm@v4.2.0
 
-      - name: Setup Kubectl
+      - name: Set up Kubectl
         uses: azure/setup-kubectl@v4
 
       - name: Create k8s Kind Cluster
@@ -83,3 +77,4 @@ jobs:
           --set todoapp.secrets.DB_PASSWORD="${{ secrets.MYSQL_PASSWORD }}" \
           --set todoapp.secrets.DB_HOST="${{ secrets.APP_DB_HOST }}" \
           --set todoapp.image.tag=${{ github.sha }}
+
