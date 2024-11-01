@@ -1,167 +1,84 @@
-name: python-deployment
+stages:
+  - test
+  - build
+  - lint
+  - package
+  - deploy
 
-run-name: ${{ github.actor }} - ${{ github.ref_name}} -${{ github.sha }}
+variables:
+  PythonVersion: "3.8"
+  DockerImageName: "todoapp"
 
-on:
-  push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
+python-ci:
+  stage: test
+  parallel:
+    matrix:
+      - PythonVersion: ["3.8", "3.9"]
+      - OsType: ["ubuntu-latest", "windows-latest"]
+  script:
+    - apt-get update && apt-get install -y python${PythonVersion}
+    - python -m pip install --upgrade pip
+    - pip install coverage flake8
+    - pip install -r requirements.txt
+    - python manage.py test
+    - coverage run --source='.' manage.py test
+    - coverage report
+    - flake8 . --show-source --statistics --exit-zero
+    - flake8 . --exit-zero --max-complexity=6
+  artifacts:
+    paths:
+      - ./
+      - coverage.xml
+    when: on_success
+  only:
+    - main
 
-  workflow_dispatch:
-    inputs:
-      artifact_choice:
-        description: 'Choose artifact to deploy'
-        required: true
-        default: 'ubuntu-latest-3.8'
-        type: choice
-        options: ['ubuntu-latest-3.8', 'ubuntu-latest-3.9', 'windows-latest-3.8', 'windows-latest-3.9']
+docker-ci:
+  stage: build
+  dependencies:
+    - python-ci
+  script:
+    - docker login -u "$DOCKERHUB_USERNAME" -p "$DOCKERHUB_TOKEN"
+    - docker build -t ${DOCKERHUB_USERNAME}/${DockerImageName}:${CI_COMMIT_SHA} ./src
+    - docker push ${DOCKERHUB_USERNAME}/${DockerImageName}:${CI_COMMIT_SHA}
+  only:
+    - main
 
-concurrency:
-  group: ${{ github.workflow }} - ${{ github.ref }}
-  cancel-in-progress: true
+helm-ci:
+  stage: package
+  dependencies:
+    - python-ci
+  script:
+    - apt-get update && apt-get install -y curl
+    - curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+    - helm lint ./todoapp/
+    - helm template todoapp ./todoapp/ -f ./todoapp/values.yaml
+    - helm package ./todoapp
+  artifacts:
+    paths:
+      - ./*.tgz
+  only:
+    - main
 
-env:
-  PythonVersion: 3.8
-  DockerImageName: todoapp
+deploy-helm-dev:
+  stage: deploy
+  dependencies:
+    - helm-ci
+    - docker-ci
+  script:
+    - helm upgrade --install todoapp ./todoapp --namespace development --set image.tag=${CI_COMMIT_SHA}
+  environment:
+    name: development
+  only:
+    - main
 
-jobs:
-  python-ci:
-    strategy:
-      matrix:
-        PythonVersion: [3.8, 3.9]
-        OsType: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.OsType }}
-    defaults:
-      run:
-        working-directory: ./src
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python ${{ matrix.PythonVersion }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.PythonVersion }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install coverage flake8
-          pip install -r requirements.txt
-
-      - name: Run tests
-        run: |
-          python manage.py test
-
-      - name: Generate Report
-        run: |
-          coverage run --source='.' manage.py test
-          coverage report
-
-      - name: Linting
-        run: |
-          flake8 . --show-source --statistics --exit-zero
-
-      - name: Check Complexity
-        run: |
-          flake8 . --exit-zero --max-complexity=6
-
-      - name: Upload python artifacts
-        if: github.ref_name == 'main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-artifacts-${{ matrix.OsType }}-${{ matrix.PythonVersion }}
-          path: .
-
-      - name: Upload helm artifacts
-        if: github.ref_name == 'main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: helm-artifacts-${{ matrix.OsType }}-${{ matrix.PythonVersion }}
-          path: ${{ github.workspace }}/helm-charts
-
-      - name: Upload kind cluster artifact
-        if: github.ref_name == 'main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: kind-cluster-${{ matrix.OsType }}-${{ matrix.PythonVersion }}
-          path: ${{ github.workspace }}/cluster.yml
-
-  docker-ci:
-    name: Build and Push Image
-    runs-on: ubuntu-latest
-    if: ${{ github.ref_name == 'main' }}
-    needs: python-ci
-    steps:
-
-    - uses: actions/download-artifact@v4
-      name: Download python artifacts
-      with:
-        name: python-artifacts-${{ github.event.inputs.artifact_choice  || 'ubuntu-latest-3.8' }}
-        path: .
-
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-    - name: Build and push
-      uses: docker/build-push-action@v5
-      with:
-        push: true
-        context: ./src
-        tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DockerImageName }}:${{ github.sha }}
-
-  helm-ci:
-    runs-on: ubuntu-latest
-    needs: python-ci
-    if: github.ref_name == 'main'
-    name: Helm CI
-    steps:
-
-    - uses: actions/download-artifact@v4
-      with:
-        name: helm-artifacts-${{ github.event.inputs.artifact_choice  || 'ubuntu-latest-3.8' }}
-        path: .
-
-    - name: Setup Helm
-      uses: azure/setup-helm@v4.2.0
-
-    - name: Lint helm
-      run: helm lint ./todoapp/
-
-    - name: Template Helm
-      run: helm template todoapp ./todoapp/ -f ./todoapp/values.yaml
-
-    - name: Package Helm
-      run: helm package ./todoapp
-
-    - name: Upload Helm Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: helm-package
-        path: ./*.tgz
-
-  deploy-helm-dev:
-    name: Deploy helm to Development
-    uses: ./.github/workflows/reusable-deployment.yml
-    needs: [helm-ci, docker-ci]
-    secrets: inherit
-    with:
-      environment: development
-      version: ${{ github.sha }}
-      artifact_choice: ${{ github.event.inputs.artifact_choice || 'ubuntu-latest-3.8' }}
-
-  deploy-helm-stg:
-    name: Deploy helm to Staging
-    uses: ./.github/workflows/reusable-deployment.yml
-    needs: [deploy-helm-dev]
-    secrets: inherit
-    with:
-      environment: staging
-      version: ${{ github.sha }}
-      helm-values-path: ./todoapp/values/stg.yaml
-      helm-release-name: todoapp-staging
-      artifact_choice: ${{ github.event.inputs.artifact_choice || 'ubuntu-latest-3.8' }}
+deploy-helm-stg:
+  stage: deploy
+  dependencies:
+    - deploy-helm-dev
+  script:
+    - helm upgrade --install todoapp-staging ./todoapp --namespace staging -f ./todoapp/values/stg.yaml --set image.tag=${CI_COMMIT_SHA}
+  environment:
+    name: staging
+  only:
+    - main
